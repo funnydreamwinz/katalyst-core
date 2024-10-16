@@ -2498,7 +2498,7 @@ func TestUpdate(t *testing.T) {
 				assert.ElementsMatch(t, tt.wantAdviceResult.ExtraEntries, result.ExtraEntries)
 				assert.ElementsMatch(t, tt.wantAdviceResult.ContainerEntries, result.ContainerEntries)
 			}
-			headroom, err := advisor.GetHeadroom()
+			headroom, _, err := advisor.GetHeadroom()
 
 			if reflect.DeepEqual(tt.wantHeadroom, resource.Quantity{}) {
 				assert.Error(t, err)
