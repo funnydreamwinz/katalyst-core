@@ -36,6 +36,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/pluginmanager"
 	plugincache "k8s.io/kubernetes/pkg/kubelet/pluginmanager/cache"
 
+	info "github.com/google/cadvisor/info/v1"
 	internalfake "github.com/kubewharf/katalyst-api/pkg/client/clientset/versioned/fake"
 	"github.com/kubewharf/katalyst-api/pkg/plugins/registration"
 	"github.com/kubewharf/katalyst-core/cmd/katalyst-agent/app/options"
@@ -114,6 +115,7 @@ func generateTestMetaServer(clientSet *client.GenericClientSet, conf *config.Con
 			MetricsFetcher: metric.NewFakeMetricsFetcher(metrics.DummyMetrics{}),
 			KatalystMachineInfo: &machine.KatalystMachineInfo{
 				CPUTopology: cpuTopology,
+				MachineInfo: &info.MachineInfo{},
 			},
 		},
 		ConfigurationManager: &dynamicconfig.DummyConfigurationManager{},
@@ -187,7 +189,7 @@ func TestReclaimedResourcedReporterWithManager(t *testing.T) {
 	metaServer := generateTestMetaServer(clientSet, conf)
 
 	advisorStub := hmadvisor.NewResourceAdvisorStub()
-	genericPlugin, err := newHeadroomReporterPlugin(metrics.DummyMetrics{}, metaServer, conf, advisorStub)
+	genericPlugin, _, err := newHeadroomReporterPlugin(metrics.DummyMetrics{}, metaServer, conf, advisorStub)
 	require.NoError(t, err)
 	require.NotNil(t, genericPlugin)
 	_ = genericPlugin.Start()
