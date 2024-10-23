@@ -202,7 +202,6 @@ func (ms *memoryServer) ListAndWatch(_ *advisorsvc.Empty, server advisorsvc.Advi
 
 // assmble per-numa headroom
 func (ms *memoryServer) assembleHeadroom() *advisorsvc.CalculationInfo {
-	var data []byte
 	numaAllocatable, err := ms.headroomResourceManager.GetNumaAllocatable()
 	if err != nil {
 		general.ErrorS(err, "get numa allocatable failed")
@@ -213,7 +212,7 @@ func (ms *memoryServer) assembleHeadroom() *advisorsvc.CalculationInfo {
 	for numaID, res := range numaAllocatable {
 		numaHeadroom[numaID] = res.Value()
 	}
-	data, err = json.Marshal(numaHeadroom)
+	data, err := json.Marshal(numaHeadroom)
 	if err != nil {
 		general.ErrorS(err, "marshal numa headroom failed")
 		return nil
