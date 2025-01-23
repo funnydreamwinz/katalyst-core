@@ -174,7 +174,7 @@ func (ha *HeadroomAssemblerCommon) getHeadroomByUtil() (resource.Quantity, map[i
 			return resource.Quantity{}, nil, fmt.Errorf("get reclaim Metrics failed with numa %d: %v", numaID, err)
 		}
 
-		headroom, err := ha.getUtilBasedHeadroom(options, reclaimMetrics)
+		headroom, err := ha.getUtilBasedHeadroomPerNUMA(numaID, options, reclaimMetrics)
 		if err != nil {
 			return resource.Quantity{}, nil, fmt.Errorf("get util-based headroom failed with numa %d: %v", numaID, err)
 		}

@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog/v2"
 
+	"github.com/kubewharf/katalyst-api/pkg/apis/node/v1alpha1"
 	"github.com/kubewharf/katalyst-api/pkg/consts"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/plugin/qosaware/resource/helper"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/types"
@@ -72,6 +73,40 @@ func (ha *HeadroomAssemblerCommon) getUtilBasedHeadroom(options helper.UtilBased
 	return *resource.NewQuantity(int64(math.Ceil(headroom)), resource.DecimalSI), nil
 }
 
+func (ha *HeadroomAssemblerCommon) getUtilBasedHeadroomPerNUMA(numaID int, options helper.UtilBasedCapacityOptions,
+	reclaimMetrics *metaserverHelper.ReclaimMetrics,
+) (resource.Quantity, error) {
+	lastReclaimedCPU, err := ha.getLastReclaimedCPUPerNUMA(numaID)
+	if err != nil {
+		return resource.Quantity{}, err
+	}
+	if reclaimMetrics == nil {
+		return resource.Quantity{}, fmt.Errorf("reclaimMetrics is nil")
+	}
+
+	if reclaimMetrics.ReclaimedCoresSupply == 0 {
+		return *resource.NewQuantity(0, resource.DecimalSI), nil
+	}
+
+	util := reclaimMetrics.CgroupCPUUsage / reclaimMetrics.ReclaimedCoresSupply
+
+	general.InfoS("getUtilBasedHeadroom", "reclaimedCoresSupply", reclaimMetrics.ReclaimedCoresSupply,
+		"util", util, "reclaim PoolCPUUsage", reclaimMetrics.PoolCPUUsage, "reclaim CgroupCPUUsage", reclaimMetrics.CgroupCPUUsage,
+		"lastReclaimedCPU", lastReclaimedCPU, "numa", numaID)
+
+	headroom, err := helper.EstimateUtilBasedCapacity(
+		options,
+		reclaimMetrics.ReclaimedCoresSupply,
+		util,
+		lastReclaimedCPU,
+	)
+	if err != nil {
+		return resource.Quantity{}, err
+	}
+
+	return *resource.NewQuantity(int64(math.Ceil(headroom)), resource.DecimalSI), nil
+}
+
 func (ha *HeadroomAssemblerCommon) getLastReclaimedCPU() (float64, error) {
 	cnr, err := ha.metaServer.CNRFetcher.GetCNR(context.Background())
 	if err != nil {
@@ -85,6 +120,48 @@ func (ha *HeadroomAssemblerCommon) getLastReclaimedCPU() (float64, error) {
 	}
 
 	klog.Errorf("cnr status resource allocatable reclaimed milli cpu not found")
+	return 0, nil
+}
+
+func (ha *HeadroomAssemblerCommon) getLastReclaimedCPUPerNUMA(numa int) (float64, error) {
+	cnr, err := ha.metaServer.CNRFetcher.GetCNR(context.Background())
+	if err != nil {
+		return 0, err
+	}
+
+	for _, topologyZone := range cnr.Status.TopologyZone {
+		if topologyZone.Type != v1alpha1.TopologyTypeSocket {
+			continue
+		}
+
+		for _, child := range topologyZone.Children {
+			if child.Type != v1alpha1.TopologyTypeNuma {
+				continue
+			}
+
+			numaID, err := strconv.Atoi(child.Name)
+			if err != nil {
+				klog.Errorf("invalid numa name: %v, %v", child.Name, err)
+				continue
+			}
+
+			if numaID != numa {
+				continue
+			}
+
+			if child.Resources.Allocatable == nil {
+				return 0, fmt.Errorf("numa zone without allocatable resource: %d", numa)
+			}
+
+			if reclaimedMilliCPU, ok := (*child.Resources.Allocatable)[consts.ReclaimedResourceMilliCPU]; ok {
+				return float64(reclaimedMilliCPU.Value()) / 1000, nil
+			} else {
+				return 0, nil
+			}
+		}
+	}
+
+	klog.Errorf("cnr status resource allocatable reclaimed milli cpu not found with numa: %d", numa)
 	return 0, nil
 }
 
