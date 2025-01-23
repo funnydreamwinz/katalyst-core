@@ -174,7 +174,7 @@ func (ha *HeadroomAssemblerCommon) getHeadroomByUtil() (resource.Quantity, map[i
 			return resource.Quantity{}, nil, fmt.Errorf("get reclaim Metrics failed with numa %d: %v", numaID, err)
 		}
 
-		headroom, err := ha.getUtilBasedHeadroom(options, reclaimMetrics)
+		headroom, err := ha.getUtilBasedHeadroom(options, reclaimMetrics, []int{numaID})
 		if err != nil {
 			return resource.Quantity{}, nil, fmt.Errorf("get util-based headroom failed with numa %d: %v", numaID, err)
 		}
@@ -201,7 +201,7 @@ func (ha *HeadroomAssemblerCommon) getHeadroomByUtil() (resource.Quantity, map[i
 		}
 
 		options.MaxCapacity *= float64(len(nonBindingNumas))
-		headroom, err := ha.getUtilBasedHeadroom(options, reclaimMetrics)
+		headroom, err := ha.getUtilBasedHeadroom(options, reclaimMetrics, nonBindingNumas)
 		if err != nil {
 			return resource.Quantity{}, nil, fmt.Errorf("get util-based headroom failed: %v", err)
 		}

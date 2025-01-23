@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog/v2"
 
+	"github.com/kubewharf/katalyst-api/pkg/apis/node/v1alpha1"
 	"github.com/kubewharf/katalyst-api/pkg/consts"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/plugin/qosaware/resource/helper"
 	"github.com/kubewharf/katalyst-core/pkg/agent/sysadvisor/types"
@@ -40,8 +41,9 @@ const (
 
 func (ha *HeadroomAssemblerCommon) getUtilBasedHeadroom(options helper.UtilBasedCapacityOptions,
 	reclaimMetrics *metaserverHelper.ReclaimMetrics,
+	numaList []int,
 ) (resource.Quantity, error) {
-	lastReclaimedCPU, err := ha.getLastReclaimedCPU()
+	lastReclaimedCPU, err := ha.getLastReclaimedCPUByNUMAs(numaList)
 	if err != nil {
 		return resource.Quantity{}, err
 	}
@@ -57,7 +59,7 @@ func (ha *HeadroomAssemblerCommon) getUtilBasedHeadroom(options helper.UtilBased
 
 	general.InfoS("getUtilBasedHeadroom", "reclaimedCoresSupply", reclaimMetrics.ReclaimedCoresSupply,
 		"util", util, "reclaim PoolCPUUsage", reclaimMetrics.PoolCPUUsage, "reclaim CgroupCPUUsage", reclaimMetrics.CgroupCPUUsage,
-		"lastReclaimedCPU", lastReclaimedCPU)
+		"lastReclaimedCPU", lastReclaimedCPU, "numa", numaList)
 
 	headroom, err := helper.EstimateUtilBasedCapacity(
 		options,
@@ -86,6 +88,52 @@ func (ha *HeadroomAssemblerCommon) getLastReclaimedCPU() (float64, error) {
 
 	klog.Errorf("cnr status resource allocatable reclaimed milli cpu not found")
 	return 0, nil
+}
+
+func (ha *HeadroomAssemblerCommon) getLastReclaimedCPUByNUMAs(numaList []int) (float64, error) {
+	cnr, err := ha.metaServer.CNRFetcher.GetCNR(context.Background())
+	if err != nil {
+		return 0, err
+	}
+
+	totalReclaimed := 0.0
+	numaMap := make(map[int]bool)
+	for _, numaID := range numaList {
+		numaMap[numaID] = true
+	}
+
+	for _, topologyZone := range cnr.Status.TopologyZone {
+		if topologyZone.Type != v1alpha1.TopologyTypeSocket {
+			continue
+		}
+
+		for _, child := range topologyZone.Children {
+			if child.Type != v1alpha1.TopologyTypeNuma {
+				continue
+			}
+
+			numaID, err := strconv.Atoi(child.Name)
+			if err != nil {
+				klog.Errorf("invalid numa name: %v, %v", child.Name, err)
+				continue
+			}
+
+			if _, ok := numaMap[numaID]; !ok {
+				continue
+			}
+
+			if child.Resources.Allocatable == nil {
+				klog.Errorf("numa zone without allocatable resource: %d", numaID)
+				continue
+			}
+
+			if reclaimedMilliCPU, ok := (*child.Resources.Allocatable)[consts.ReclaimedResourceMilliCPU]; ok {
+				totalReclaimed += (float64(reclaimedMilliCPU.Value()) / 1000)
+			}
+		}
+	}
+
+	return totalReclaimed, nil
 }
 
 func (ha *HeadroomAssemblerCommon) getReclaimNUMABindingTopo(reclaimPool *types.PoolInfo) (bindingNUMAs, nonBindingNumas []int, err error) {
