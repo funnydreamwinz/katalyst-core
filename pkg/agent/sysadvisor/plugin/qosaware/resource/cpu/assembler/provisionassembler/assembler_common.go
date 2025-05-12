@@ -274,6 +274,8 @@ func (pa *ProvisionAssemblerCommon) assembleDedicatedNUMAExclusiveRegion(r regio
 		preferControlKnobCPUQuota = true
 	}
 
+	general.Infof("sysadvisor quota status: %v, %v", pa.conf.PreferControlKnobCPUQuota, preferControlKnobCPUQuota)
+
 	if preferControlKnobCPUQuota && common.CheckCgroup2UnifiedMode() {
 		reclaimedCoresSize = available
 		reclaimedCoresLimit = general.MaxFloat64(float64(reservedForReclaim), float64(available-nonReclaimRequirement))
