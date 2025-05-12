@@ -309,7 +309,7 @@ func (p *DynamicPolicy) createGetAdviceRequest() (*advisorapi.GetAdviceRequest, 
 		return nil, err
 	}
 
-	general.InfofV(6, "CPU plugin desire negotiation feature gates: %#v", wantedFeatureGates)
+	general.Infof("CPU plugin desire negotiation feature gates: %#v", wantedFeatureGates)
 
 	return &advisorapi.GetAdviceRequest{
 		Entries:            chkEntries,
