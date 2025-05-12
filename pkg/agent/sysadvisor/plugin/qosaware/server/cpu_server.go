@@ -126,7 +126,7 @@ func (cs *cpuServer) GetAdvice(ctx context.Context, request *cpuadvisor.GetAdvic
 		return nil, err
 	}
 
-	general.InfofV(6, "QRM CPU Plugin wanted feature gates: %v, among them sysadvisor supported feature gates: %v", lo.Keys(request.WantedFeatureGates), lo.Keys(supportedWantedFeatureGates))
+	general.Infof("debug: QRM CPU Plugin wanted feature gates: %v, among them sysadvisor supported feature gates: %v", lo.Keys(request.WantedFeatureGates), lo.Keys(supportedWantedFeatureGates))
 	result, err := cs.updateAdvisor(supportedWantedFeatureGates)
 	if err != nil {
 		general.Errorf("update advisor failed: %v", err)
