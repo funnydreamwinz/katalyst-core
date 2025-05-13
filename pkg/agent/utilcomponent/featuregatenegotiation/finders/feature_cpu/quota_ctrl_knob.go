@@ -29,14 +29,13 @@ const NegotiationFeatureGateQuotaCtrlKnob = "feature_gate_quota_ctrl_knob"
 type QuotaCtrlKnob struct{}
 
 func (e *QuotaCtrlKnob) GetFeatureGate(conf *config.Configuration) *advisorsvc.FeatureGate {
-	if conf.PreferControlKnobCPUQuota == false || !common.CheckCgroup2UnifiedMode() {
-		general.Infof("feature_gate_quota_ctrl_knob is not supported: %v, %v", conf.PreferControlKnobCPUQuota, common.CheckCgroup2UnifiedMode())
+	if conf.EnableControlKnobCPUQuota == false || !common.CheckCgroup2UnifiedMode() {
+		general.Infof("feature_gate_quota_ctrl_knob is not supported: %v, %v", conf.EnableControlKnobCPUQuota, common.CheckCgroup2UnifiedMode())
 		return nil
 	} else {
 		general.Infof("GetFeatureGate with %s", NegotiationFeatureGateQuotaCtrlKnob)
 	}
 
-	// determine whether to enable the feature gate based on the information in conf
 	return &advisorsvc.FeatureGate{
 		Name:                  NegotiationFeatureGateQuotaCtrlKnob,
 		Type:                  finders.FeatureGateTypeCPU,
