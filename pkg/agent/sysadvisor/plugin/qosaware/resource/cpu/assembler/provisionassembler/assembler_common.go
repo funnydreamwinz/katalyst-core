@@ -178,7 +178,7 @@ func (pa *ProvisionAssemblerCommon) assembleSharedCoresWithNUMABindingRegion(r r
 			preferControlKnobCPUQuota = true
 		}
 
-		general.Infof("sysadvisor quota status: %v, %v", pa.conf.PreferControlKnobCPUQuota, preferControlKnobCPUQuota)
+		general.Infof("sysadvisor quota status: %v", preferControlKnobCPUQuota)
 
 		if preferControlKnobCPUQuota && common.CheckCgroup2UnifiedMode() {
 			reclaimedCoresQuota = float64(general.Max(reservedForReclaim, reclaimedCoresAvail))
@@ -274,7 +274,7 @@ func (pa *ProvisionAssemblerCommon) assembleDedicatedNUMAExclusiveRegion(r regio
 		preferControlKnobCPUQuota = true
 	}
 
-	general.Infof("sysadvisor quota status: %v, %v", pa.conf.PreferControlKnobCPUQuota, preferControlKnobCPUQuota)
+	general.Infof("sysadvisor quota status: %v", preferControlKnobCPUQuota)
 
 	if preferControlKnobCPUQuota && common.CheckCgroup2UnifiedMode() {
 		reclaimedCoresSize = available
