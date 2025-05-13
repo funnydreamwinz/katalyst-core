@@ -184,6 +184,9 @@ func (pa *ProvisionAssemblerCommon) assembleSharedCoresWithNUMABindingRegion(r r
 			reclaimedCoresQuota = float64(general.Max(reservedForReclaim, reclaimedCoresAvail))
 			if quota, ok := controlKnob[configapi.ControlKnobReclaimedCoresCPUQuota]; ok {
 				reclaimedCoresQuota = quota.Value
+				general.Infof("set quota with ControlKnobReclaimedCoresCPUQuota: %v", reclaimedCoresQuota)
+			} else {
+				general.Infof("set quota with reclaimedCoresAvail: %v", reclaimedCoresQuota)
 			}
 			reclaimedCoresSize = poolSizes[r.OwnerPoolName()]
 		} else {
@@ -282,6 +285,9 @@ func (pa *ProvisionAssemblerCommon) assembleDedicatedNUMAExclusiveRegion(r regio
 
 		if quota, ok := controlKnob[configapi.ControlKnobReclaimedCoresCPUQuota]; ok {
 			reclaimedCoresLimit = general.MinFloat64(reclaimedCoresLimit, quota.Value)
+			general.Infof("set quota with ControlKnobReclaimedCoresCPUQuota: %v", reclaimedCoresLimit)
+		} else {
+			general.Infof("set quota with nonReclaimRequirement: %v", reclaimedCoresLimit)
 		}
 	} else {
 		reclaimedCoresSize = general.Max(reservedForReclaim, available-nonReclaimRequirement)
