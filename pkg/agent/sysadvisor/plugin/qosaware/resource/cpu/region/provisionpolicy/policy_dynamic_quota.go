@@ -73,7 +73,7 @@ func (p *PolicyDynamicQuota) updateForCPUQuota() error {
 	}
 	quota := general.MaxFloat64(float64(cpusPerNUMA)*(indicator.Target-indicator.Current)+reclaimCoresCPUUsage, p.ReservedForReclaim)
 
-	general.InfoS("metrics", "cpuUsage", reclaimCoresCPUUsage, "cpusPerNUMA", cpusPerNUMA, "target", indicator.Target, "current", indicator.Current, "quota", quota, "numas", p.bindingNumas.String())
+	general.InfoS("dynamic quota policy metrics", "cpuUsage", reclaimCoresCPUUsage, "cpusPerNUMA", cpusPerNUMA, "target", indicator.Target, "current", indicator.Current, "quota", quota, "numas", p.bindingNumas.String())
 
 	p.controlKnobAdjusted = types.ControlKnob{
 		configapi.ControlKnobReclaimedCoresCPUQuota: types.ControlKnobItem{
