@@ -94,6 +94,8 @@ func (p *PolicyDynamicQuota) Update() error {
 		return p.updateForCPUQuota()
 	}
 
+	general.Infof("isCPUQuotaAsControlKnob check failed")
+
 	return nil
 }
 
