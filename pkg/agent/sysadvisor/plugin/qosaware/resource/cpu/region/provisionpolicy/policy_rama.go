@@ -146,6 +146,8 @@ func (p *PolicyRama) Update() error {
 		}
 	}
 
+	general.Infof("rama update ret: %v, %v", knobName, cpuAdjustedRaw)
+
 	cpuAdjustedRestricted := cpuAdjustedRaw
 
 	p.controlKnobAdjusted = types.ControlKnob{
@@ -193,13 +195,17 @@ func (p *PolicyRama) sanityCheck() error {
 		}
 	}
 	if !isLegal {
+		general.Infof("rama sanity check failed: illegal control knob %v", p.ControlKnobs)
 		errList = append(errList, fmt.Errorf("illegal control knob %v", p.ControlKnobs))
 	}
 
 	// 4. check indicators legality
 	if p.Indicators == nil {
+		general.Infof("rama sanity check failed: illegal indicators")
 		errList = append(errList, fmt.Errorf("illegal indicators"))
 	}
+
+	general.Infof("rama sanity check ret: %v", errList)
 
 	return errors.NewAggregate(errList)
 }
