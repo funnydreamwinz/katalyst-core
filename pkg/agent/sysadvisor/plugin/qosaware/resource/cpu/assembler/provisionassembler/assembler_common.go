@@ -240,6 +240,7 @@ func (pa *ProvisionAssemblerCommon) assembleDedicatedNUMAExclusiveRegion(r regio
 
 	controlKnob, err := r.GetProvision()
 	if err != nil {
+		general.Infof("GetProvision failed: %v", err)
 		return err
 	}
 
@@ -257,6 +258,7 @@ func (pa *ProvisionAssemblerCommon) assembleDedicatedNUMAExclusiveRegion(r regio
 
 	quotaCtrlKnobEnabled, err := metacache.IsQuotaCtrlKnobEnabled(pa.metaReader)
 	if err != nil {
+		general.Infof("check IsQuotaCtrlKnobEnabled failed: %v", err)
 		return err
 	}
 
@@ -274,7 +276,8 @@ func (pa *ProvisionAssemblerCommon) assembleDedicatedNUMAExclusiveRegion(r regio
 	klog.InfoS("assembleDedicatedNUMAExclusive info", "regionName", r.Name(), "reclaimedCoresSize", reclaimedCoresSize,
 		"reclaimedCoresLimit", reclaimedCoresLimit,
 		"available", available, "nonReclaimRequirement", nonReclaimRequirement,
-		"reservedForReclaim", reservedForReclaim, "controlKnob", controlKnob)
+		"reservedForReclaim", reservedForReclaim, "controlKnob", controlKnob,
+		"regionNuma", regionNuma)
 
 	result.SetPoolEntry(commonstate.PoolNameReclaim, regionNuma, reclaimedCoresSize, reclaimedCoresLimit)
 	return nil
