@@ -277,6 +277,11 @@ func (m *EvictionManger) sync(ctx context.Context) {
 	}
 
 	errList := make([]error, 0)
+	notifyErr := m.doNotify(collector.getSoftEvictPods())
+	if notifyErr != nil {
+		errList = append(errList, notifyErr)
+	}
+
 	evictErr := m.doEvict(collector.getSoftEvictPods(), collector.getForceEvictPods())
 	if evictErr != nil {
 		errList = append(errList, evictErr)
@@ -342,8 +347,8 @@ func (m *EvictionManger) collectEvictionResult(pods []*v1.Pod) (*evictionRespCol
 	m.conditionLock.Unlock()
 
 	for pluginName, threshold := range thresholdsMet {
-		if threshold.MetType != pluginapi.ThresholdMetType_HARD_MET {
-			general.Infof(" the type: %s of met threshold from plugin: %s isn't  %s", threshold.MetType.String(), pluginName, pluginapi.ThresholdMetType_HARD_MET.String())
+		if threshold.MetType == pluginapi.ThresholdMetType_NOT_MET {
+			general.Infof("resp from plugin: %s not met threshold", pluginName)
 			continue
 		}
 
@@ -352,12 +357,16 @@ func (m *EvictionManger) collectEvictionResult(pods []*v1.Pod) (*evictionRespCol
 			general.Errorf(" pluginName points to nil endpoint, can't handle threshold from it")
 		}
 
+		topN := uint64(0)
+		if threshold.MetType == pluginapi.ThresholdMetType_HARD_MET {
+			topN = 1
+		}
+
 		resp, err := m.endpoints[pluginName].GetTopEvictionPods(context.Background(), &pluginapi.GetTopEvictionPodsRequest{
 			ActivePods:    pods,
-			TopN:          1,
+			TopN:          topN,
 			EvictionScope: threshold.EvictionScope,
 		})
-
 		m.endpointLock.RUnlock()
 		if err != nil {
 			general.Errorf(" calling GetTopEvictionPods of plugin: %s failed with error: %v", pluginName, err)
@@ -375,6 +384,10 @@ func (m *EvictionManger) collectEvictionResult(pods []*v1.Pod) (*evictionRespCol
 	}
 
 	return collector, errors.NewAggregate(errList)
+}
+
+func (m *EvictionManger) doNotify(softEvictPods map[string]*rule.RuledEvictPod) error {
+	native.NotifySoftEvictPod()
 }
 
 func (m *EvictionManger) doEvict(softEvictPods, forceEvictPods map[string]*rule.RuledEvictPod) error {

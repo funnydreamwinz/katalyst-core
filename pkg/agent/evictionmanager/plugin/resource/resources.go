@@ -19,6 +19,9 @@ package resource
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"math"
+	"slices"
 	"sort"
 	"time"
 
@@ -55,6 +58,7 @@ type ResourcesEvictionPlugin struct {
 
 	// thresholdGetter is used to get the threshold of resources.
 	thresholdGetter                     ThresholdGetter
+	softThresholdGetter                 ThresholdGetter
 	resourcesGetter                     ResourcesGetter
 	deletionGracePeriodGetter           GracePeriodGetter
 	thresholdMetToleranceDurationGetter GracePeriodGetter
@@ -69,6 +73,7 @@ type ResourcesEvictionPlugin struct {
 
 func NewResourcesEvictionPlugin(pluginName string, metaServer *metaserver.MetaServer,
 	emitter metrics.MetricEmitter, resourcesGetter ResourcesGetter, thresholdGetter ThresholdGetter,
+	softThresholdGetter ThresholdGetter,
 	deletionGracePeriodGetter GracePeriodGetter, thresholdMetToleranceDurationGetter GracePeriodGetter,
 	skipZeroQuantityResourceNames sets.String,
 	podFilter func(pod *v1.Pod) (bool, error),
@@ -80,6 +85,7 @@ func NewResourcesEvictionPlugin(pluginName string, metaServer *metaserver.MetaSe
 		metaServer:                          metaServer,
 		resourcesGetter:                     resourcesGetter,
 		thresholdGetter:                     thresholdGetter,
+		softThresholdGetter:                 softThresholdGetter,
 		deletionGracePeriodGetter:           deletionGracePeriodGetter,
 		thresholdMetToleranceDurationGetter: thresholdMetToleranceDurationGetter,
 		skipZeroQuantityResourceNames:       skipZeroQuantityResourceNames,
@@ -206,6 +212,30 @@ func (b *ResourcesEvictionPlugin) ThresholdMet(ctx context.Context) (*pluginapi.
 				GracePeriodSeconds: b.thresholdMetToleranceDurationGetter(),
 			}, nil
 		}
+
+		softThresholdRate := b.softThresholdGetter(resourceName)
+		if softThresholdRate == nil {
+			continue
+		}
+
+		thresholdValue = *softThresholdRate * total
+		klog.Infof("[%s] resources %v: total %v, used %v, softThresholdRate %v, softThresholdValue: %v", b.pluginName,
+			resourceName, total, used, *softThresholdRate, thresholdValue)
+
+		exceededValue = thresholdValue - used
+		if exceededValue < 0 {
+			klog.Infof("[%s] resources %v exceeded: total %v, used %v, softThresholdRate %v, thresholdValue: %v", b.pluginName,
+				resourceName, total, used, *softThresholdRate, thresholdValue)
+
+			return &pluginapi.ThresholdMetResponse{
+				ThresholdValue:     thresholdValue,
+				ObservedValue:      used,
+				ThresholdOperator:  pluginapi.ThresholdOperator_GREATER_THAN,
+				MetType:            pluginapi.ThresholdMetType_SOFT_MET,
+				EvictionScope:      string(resourceName),
+				GracePeriodSeconds: b.thresholdMetToleranceDurationGetter(),
+			}, nil
+		}
 	}
 
 	return &pluginapi.ThresholdMetResponse{
@@ -213,7 +243,7 @@ func (b *ResourcesEvictionPlugin) ThresholdMet(ctx context.Context) (*pluginapi.
 	}, nil
 }
 
-func (b *ResourcesEvictionPlugin) GetTopEvictionPods(_ context.Context, request *pluginapi.GetTopEvictionPodsRequest) (*pluginapi.GetTopEvictionPodsResponse, error) {
+func (b *ResourcesEvictionPlugin) GetTopEvictionPods(ctx context.Context, request *pluginapi.GetTopEvictionPodsRequest) (*pluginapi.GetTopEvictionPodsResponse, error) {
 	if request == nil {
 		return nil, fmt.Errorf("GetTopEvictionPods got nil request")
 	}
@@ -225,20 +255,89 @@ func (b *ResourcesEvictionPlugin) GetTopEvictionPods(_ context.Context, request 
 
 	activeFilteredPods := native.FilterPods(request.ActivePods, b.podFilter)
 
-	sort.Slice(activeFilteredPods, func(i, j int) bool {
-		valueI, valueJ := int64(0), int64(0)
-
-		resourceI, resourceJ := native.SumUpPodRequestResources(activeFilteredPods[i]), native.SumUpPodRequestResources(activeFilteredPods[j])
-		if quantity, ok := resourceI[v1.ResourceName(request.EvictionScope)]; ok {
-			valueI = (&quantity).Value()
+	retLen := uint64(0)
+	if request.TopN == 0 {
+		// check resource type
+		if request.EvictionScope == "" {
+			klog.Infof("[%s]: not assign eviction scope", b.pluginName)
+			return &pluginapi.GetTopEvictionPodsResponse{}, nil
 		}
-		if quantity, ok := resourceJ[v1.ResourceName(request.EvictionScope)]; ok {
-			valueJ = (&quantity).Value()
-		}
-		return valueI > valueJ
-	})
+		resourceName := v1.ResourceName(request.EvictionScope)
 
-	retLen := general.MinUInt64(request.TopN, uint64(len(activeFilteredPods)))
+		// cal thresholdValue
+		allocatable, err := b.resourcesGetter(ctx)
+		if err != nil {
+			klog.Errorf("[%s] failed to get resources %v", b.pluginName, err)
+			return &pluginapi.GetTopEvictionPodsResponse{}, nil
+		}
+		totalQuantity, ok := allocatable[resourceName]
+		if !ok {
+			klog.Warningf("[%s] used resource: %s doesn't exist in allocatable", b.pluginName, resourceName)
+			return &pluginapi.GetTopEvictionPodsResponse{}, nil
+		}
+
+		softThresholdRate := b.softThresholdGetter(resourceName)
+		if softThresholdRate == nil {
+			klog.Infof("[%s] failed to get soft threshold", b.pluginName)
+			return &pluginapi.GetTopEvictionPodsResponse{}, nil
+		}
+		thresholdValue := *softThresholdRate * float64((&totalQuantity).Value())
+
+		// sort by pod weight
+		sort.Slice(activeFilteredPods, func(i, j int) bool {
+			valueI, valueJ := math.MaxInt64, math.MaxInt64
+
+			if w, ok := native.GetPodEvictWeight(activeFilteredPods[i]); ok {
+				valueI = w
+			}
+
+			if w, ok := native.GetPodEvictWeight(activeFilteredPods[j]); ok {
+				valueJ = w
+			}
+
+			return valueI > valueJ
+		})
+
+		// cal topN soft evict pods
+		usedQuantity := resource.NewQuantity(0, resource.DecimalSI)
+		cnt := 0
+		for _, pod := range activeFilteredPods {
+			q := native.GetPodRequestResources(pod, resourceName)
+			if q == nil {
+				klog.Warningf("[%s] GetTopEvictionPods got empty pod resources with pod %s", b.pluginName, pod.Name)
+				continue
+			}
+
+			usedQuantity.Add(*q)
+			if float64(usedQuantity.Value()) >= thresholdValue {
+				break
+			}
+			cnt++
+		}
+
+		slices.Reverse(activeFilteredPods)
+		retLen = uint64(len(activeFilteredPods) - cnt)
+		klog.Infof("[%s] GetTopEvictionPods get %d soft pods", b.pluginName, retLen)
+	} else {
+		sort.Slice(activeFilteredPods, func(i, j int) bool {
+			valueI, valueJ := int64(0), int64(0)
+
+			resourceI, resourceJ := native.SumUpPodRequestResources(activeFilteredPods[i]), native.SumUpPodRequestResources(activeFilteredPods[j])
+			if quantity, ok := resourceI[v1.ResourceName(request.EvictionScope)]; ok {
+				valueI = (&quantity).Value()
+			}
+			if quantity, ok := resourceJ[v1.ResourceName(request.EvictionScope)]; ok {
+				valueJ = (&quantity).Value()
+			}
+			return valueI > valueJ
+		})
+
+		retLen = general.MinUInt64(request.TopN, uint64(len(activeFilteredPods)))
+	}
+
+	if retLen == 0 {
+		return &pluginapi.GetTopEvictionPodsResponse{}, nil
+	}
 
 	var deletionOptions *pluginapi.DeletionOptions
 	if gracePeriod := b.deletionGracePeriodGetter(); gracePeriod > 0 {
