@@ -21,10 +21,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/kubewharf/katalyst-core/pkg/agent/evictionmanager/rule"
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+
+	"github.com/kubewharf/katalyst-core/pkg/agent/evictionmanager/rule"
 )
 
 // PodNotifier implements the notify soft eviction actions for given pods.

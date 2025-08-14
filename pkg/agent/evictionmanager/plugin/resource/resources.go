@@ -309,7 +309,7 @@ func (b *ResourcesEvictionPlugin) GetTopEvictionPods(ctx context.Context, reques
 					valueJ = *s
 				}
 
-				return valueI < valueJ
+				return valueI > valueJ
 			})
 		} else {
 			sort.Slice(activeFilteredPods, func(i, j int) bool {
